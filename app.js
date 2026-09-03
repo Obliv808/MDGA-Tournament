@@ -168,6 +168,7 @@
       decTeams: document.getElementById('decTeams'),
       teamList: document.getElementById('teamList'),
       shuffleBtn: document.getElementById('shuffleBtn'),
+      resetTeamsBtn: document.getElementById('resetTeamsBtn'),
       generateBtn: document.getElementById('generateBtn'),
       editSetupBtn: document.getElementById('editSetupBtn'),
       newTournamentBtn: document.getElementById('newTournamentBtn'),
@@ -202,7 +203,6 @@
       )).join('');
       html += (
         `<div class="team-card">
-          <button type="button" class="team-del" data-action="del" data-team="${i}" title="Remove team">&times;</button>
           <div class="team-head">
             <span class="seed-badge">${i + 1}</span>
             <input class="team-name-input" data-team="${i}" data-field="name" value="${escapeHtml(t.name)}" placeholder="Team ${i + 1}">
@@ -210,6 +210,7 @@
               <button type="button" data-action="up" data-team="${i}" title="Move up">&#9650;</button>
               <button type="button" data-action="down" data-team="${i}" title="Move down">&#9660;</button>
             </div>
+            <button type="button" class="team-del" data-action="del" data-team="${i}" title="Remove team">&times;</button>
           </div>
           <div class="players">${players}</div>
         </div>`
@@ -247,6 +248,15 @@
       const j = Math.floor(Math.random() * (i + 1));
       [state.teams[i], state.teams[j]] = [state.teams[j], state.teams[i]];
     }
+    invalidateScores();
+    saveState();
+    renderSetup();
+  }
+
+  function resetTeams() {
+    if (!confirm('Clear all team names and player rosters?\n\nThis keeps your bracket type, match format, and number of teams.')) return;
+    const pc = BRACKET_TYPES[state.bracketType].players;
+    state.teams.forEach(t => { t.name = ''; t.players = new Array(pc).fill(''); });
     invalidateScores();
     saveState();
     renderSetup();
@@ -481,6 +491,7 @@
     });
 
     els.shuffleBtn.addEventListener('click', shuffleTeams);
+    els.resetTeamsBtn.addEventListener('click', resetTeams);
 
     els.generateBtn.addEventListener('click', () => {
       if (state.teams.length < MIN_TEAMS) { alert('You need at least 2 teams.'); return; }

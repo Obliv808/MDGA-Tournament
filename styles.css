@@ -217,15 +217,14 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px 22px 60px; }
 }
 .reorder button:hover { color: var(--gold-bright); border-color: var(--line-strong); }
 .team-del {
-  position: absolute; top: 12px; right: 12px;
-  width: 24px; height: 24px; font-size: 15px;
+  flex-shrink: 0; align-self: center;
+  width: 28px; height: 28px; font-size: 16px; line-height: 1;
   color: var(--text-dim);
 }
 .team-del:hover { color: #fff; background: rgba(178,58,48,.3); border-color: var(--red); }
 
 .players {
   display: flex; flex-direction: column; gap: 7px;
-  padding-right: 26px;
 }
 .player-row { display: flex; align-items: center; gap: 8px; }
 .player-index {
@@ -252,6 +251,9 @@ input:focus, .toggle-btn:focus, button:focus {
 .setup-actions {
   display: flex; justify-content: space-between; align-items: center; gap: 14px;
   margin-top: 22px; flex-wrap: wrap;
+}
+.action-group {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
 }
 .primary-btn, .ghost-btn, .danger-btn {
   font-family: inherit;
