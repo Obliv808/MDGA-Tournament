@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MDGA Arena Tournament Bracket</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ===================== HEADER ===================== -->
+  <header class="app-header">
+    <div class="emblem" aria-hidden="true">MDGA</div>
+    <div class="title-block">
+      <h1 id="guildName">Make Durotar Great Again</h1>
+      <p class="subtitle" id="bracketSubtitle">Arena Tournament Bracket Generator</p>
+    </div>
+  </header>
+
+  <main>
+    <!-- ===================== SETUP VIEW ===================== -->
+    <section id="setupView" class="view">
+      <div class="panel setup-panel">
+        <h2 class="panel-title">Tournament Setup</h2>
+
+        <div class="setup-grid">
+          <!-- Bracket type -->
+          <div class="field-group">
+            <label class="group-label">Arena Bracket</label>
+            <div class="toggle-row" id="bracketTypeRow" role="group" aria-label="Bracket type">
+              <button type="button" class="toggle-btn" data-type="2v2">2v2</button>
+              <button type="button" class="toggle-btn active" data-type="3v3">3v3</button>
+              <button type="button" class="toggle-btn" data-type="5v5">5v5</button>
+            </div>
+          </div>
+
+          <!-- Match format -->
+          <div class="field-group">
+            <label class="group-label">Match Format</label>
+            <div class="toggle-row" id="matchFormatRow" role="group" aria-label="Match format">
+              <button type="button" class="toggle-btn active" data-format="1">Best of 1</button>
+              <button type="button" class="toggle-btn" data-format="3">Best of 3</button>
+              <button type="button" class="toggle-btn" data-format="5">Best of 5</button>
+            </div>
+          </div>
+
+          <!-- Number of teams -->
+          <div class="field-group">
+            <label class="group-label">Number of Teams</label>
+            <div class="stepper">
+              <button type="button" id="decTeams" aria-label="Fewer teams">&minus;</button>
+              <span id="teamCountValue" class="stepper-value">8</span>
+              <button type="button" id="incTeams" aria-label="More teams">+</button>
+            </div>
+          </div>
+        </div>
+
+        <p class="hint">The list order below is the <strong>seed order</strong>. Use the arrows to reorder, or shuffle. Teams that don't fill a full bracket automatically receive byes.</p>
+      </div>
+
+      <!-- Team list -->
+      <div id="teamList" class="team-list"></div>
+
+      <div class="setup-actions">
+        <button type="button" id="shuffleBtn" class="ghost-btn">Shuffle Teams</button>
+        <button type="button" id="generateBtn" class="primary-btn">Generate Bracket &rarr;</button>
+      </div>
+    </section>
+
+    <!-- ===================== BRACKET VIEW ===================== -->
+    <section id="bracketView" class="view hidden">
+      <div class="bracket-toolbar">
+        <div class="toolbar-info">
+          <span class="badge badge-type" id="infoType">3v3</span>
+          <span class="badge" id="infoFormat">Best of 1</span>
+          <span class="badge" id="infoTeams">8 teams</span>
+        </div>
+        <div class="toolbar-actions">
+          <button type="button" id="editSetupBtn" class="ghost-btn">Edit Setup</button>
+          <button type="button" id="printBtn" class="ghost-btn">Print / Save PDF</button>
+          <button type="button" id="newTournamentBtn" class="danger-btn">New Tournament</button>
+        </div>
+      </div>
+
+      <div id="championBanner" class="champion hidden">
+        <div class="crown" aria-hidden="true">&#9818;</div>
+        <div class="champ-label">Champions</div>
+        <div class="champ-name" id="champName">&mdash;</div>
+      </div>
+
+      <div class="bracket-scroll">
+        <div class="bracket-canvas" id="bracketCanvas"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <span>Forged for the guild of <strong>Make Durotar Great Again</strong></span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
