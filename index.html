@@ -61,6 +61,15 @@
               <button type="button" id="incTeams" aria-label="More teams">+</button>
             </div>
           </div>
+
+          <!-- Role requirement -->
+          <div class="field-group">
+            <label class="group-label">Roles</label>
+            <label class="role-switch" for="arenaUseRolesToggle">
+              <input type="checkbox" id="arenaUseRolesToggle">
+              <span>Require 1 Healer per team</span>
+            </label>
+          </div>
         </div>
 
         <p class="hint">The list order below is the <strong>seed order</strong>. Use the arrows to reorder, or shuffle. Teams that don't fill a full bracket automatically receive byes.</p>
@@ -130,6 +139,11 @@
             </div>
           </div>
 
+          <label class="role-switch" for="soloUseRolesToggle">
+            <input type="checkbox" id="soloUseRolesToggle">
+            <span>Require 1 Healer per team &mdash; balances teams so each gets exactly one healer</span>
+          </label>
+
           <div class="solo-pool-wrap">
             <label class="group-label" for="soloPasteBox">Add many at once</label>
             <textarea id="soloPasteBox" class="solo-pool-input" placeholder="Paste players &mdash; one per line, or comma-separated"></textarea>
@@ -138,6 +152,10 @@
 
           <div class="solo-add-row">
             <input type="text" id="soloAddInput" placeholder="&hellip;or type a single player and press Add">
+            <select id="soloAddRole" class="solo-role-select" aria-label="Role for this player">
+              <option value="dps" selected>DPS</option>
+              <option value="healer">Healer</option>
+            </select>
             <button type="button" id="soloAddBtn" class="ghost-btn">Add</button>
           </div>
 

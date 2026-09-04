@@ -32,7 +32,8 @@
   function defaultTeams(count, playerCount) {
     return Array.from({ length: count }, () => ({
       name: '',
-      players: new Array(playerCount).fill('')
+      players: new Array(playerCount).fill(''),
+      roles: new Array(playerCount).fill('dps')
     }));
   }
 
@@ -47,8 +48,10 @@
       teams: defaultTeams(8, BRACKET_TYPES['3v3'].players),
       scores: {},
       view: 'setup',
+      arenaUseRoles: false,
       soloPlayers: [],
-      soloTeamSize: 3
+      soloTeamSize: 3,
+      soloUseRoles: false
     };
   }
 
@@ -75,13 +78,24 @@
       state.teamCount = state.teams.length;
       state.teams = state.teams.map(t => ({
         name: (t && t.name) || '',
-        players: Array.from({ length: pc }, (_, i) => ((t && t.players && t.players[i]) || ''))
+        players: Array.from({ length: pc }, (_, i) => ((t && t.players && t.players[i]) || '')),
+        roles: Array.from({ length: pc }, (_, i) => ((t && Array.isArray(t.roles) && t.roles[i] === 'healer') ? 'healer' : 'dps'))
       }));
       if (!state.scores || typeof state.scores !== 'object') state.scores = {};
       state.view = (state.view === 'bracket' || state.view === 'setup') ? state.view : 'setup';
       state.mode = state.mode === 'solo' ? 'solo' : 'bracket';
+      state.arenaUseRoles = !!state.arenaUseRoles;
+      state.soloUseRoles = !!state.soloUseRoles;
       state.soloPlayers = Array.isArray(state.soloPlayers)
-        ? state.soloPlayers.filter(p => typeof p === 'string' && p.trim()).map(p => p.trim())
+        ? state.soloPlayers
+            .map(p => {
+              if (typeof p === 'string') return { name: p.trim(), role: 'dps' };
+              if (p && typeof p === 'object' && typeof p.name === 'string') {
+                return { name: p.name.trim(), role: p.role === 'healer' ? 'healer' : 'dps' };
+              }
+              return null;
+            })
+            .filter(p => p && p.name)
         : [];
       const sz = Math.round(+state.soloTeamSize);
       state.soloTeamSize = Number.isFinite(sz) && sz >= 1 ? Math.min(99, Math.max(1, sz)) : 3;
@@ -200,13 +214,16 @@
       canvas: document.getElementById('bracketCanvas'),
       copyResultsBtn: document.getElementById('copyResultsBtn'),
       byePreview: document.getElementById('byePreview'),
+      arenaUseRolesToggle: document.getElementById('arenaUseRolesToggle'),
       modeBar: document.getElementById('modeBar'),
       soloView: document.getElementById('soloView'),
       soloSizeInput: document.getElementById('soloSizeInput'),
       soloSizePresets: document.getElementById('soloSizePresets'),
+      soloUseRolesToggle: document.getElementById('soloUseRolesToggle'),
       soloPasteBox: document.getElementById('soloPasteBox'),
       soloPasteAddBtn: document.getElementById('soloPasteAddBtn'),
       soloAddInput: document.getElementById('soloAddInput'),
+      soloAddRole: document.getElementById('soloAddRole'),
       soloAddBtn: document.getElementById('soloAddBtn'),
       soloChips: document.getElementById('soloChips'),
       soloShuffleBtn: document.getElementById('soloShuffleBtn'),
@@ -228,13 +245,31 @@
       b.classList.toggle('active', b.dataset.type === state.bracketType));
     els.matchFormatRow.querySelectorAll('.toggle-btn').forEach(b =>
       b.classList.toggle('active', +b.dataset.format === state.matchFormat));
+    if (els.arenaUseRolesToggle) els.arenaUseRolesToggle.checked = !!state.arenaUseRoles;
 
     let html = '';
     state.teams.forEach((t, i) => {
-      const players = t.players.map((p, j) => (
-        `<div class="player-row"><span class="player-index">${j + 1}</span>` +
-        `<input class="player-input" data-team="${i}" data-player="${j}" value="${escapeHtml(p)}" placeholder="Player ${j + 1}"></div>`
-      )).join('');
+      if (!Array.isArray(t.roles) || t.roles.length !== t.players.length) {
+        t.roles = t.players.map((_, idx) => (t.roles && t.roles[idx]) || 'dps');
+      }
+      const players = t.players.map((p, j) => {
+        const isHealer = t.roles[j] === 'healer';
+        return `<div class="player-row"><span class="player-index">${j + 1}</span>` +
+          `<input class="player-input" data-team="${i}" data-player="${j}" value="${escapeHtml(p)}" placeholder="Player ${j + 1}">` +
+          `<button type="button" class="role-toggle ${isHealer ? 'role-healer' : 'role-dps'}" data-action="toggle-role" data-team="${i}" data-player="${j}" title="${isHealer ? 'Healer \u2014 click to set DPS' : 'DPS \u2014 click to set Healer'}">${isHealer ? 'H' : 'D'}</button></div>`;
+      }).join('');
+
+      let roleCheckHtml = '';
+      if (state.arenaUseRoles) {
+        const filled = t.players.map((p, j) => ({ p, role: t.roles[j] })).filter(x => x.p && x.p.trim());
+        if (filled.length > 0) {
+          const healerCount = filled.filter(x => x.role === 'healer').length;
+          const ok = healerCount === 1;
+          const msg = ok ? '&#10003; 1 healer' : (healerCount === 0 ? '&#9888; No healer set' : `&#9888; ${healerCount} healers (need 1)`);
+          roleCheckHtml = `<div class="role-check ${ok ? 'ok' : 'warn'}">${msg}</div>`;
+        }
+      }
+
       html += (
         `<div class="team-card">
           <div class="team-head">
@@ -247,6 +282,7 @@
             <button type="button" class="team-del" data-action="del" data-team="${i}" title="Remove team">&times;</button>
           </div>
           <div class="players">${players}</div>
+          ${roleCheckHtml}
         </div>`
       );
     });
@@ -313,7 +349,7 @@
     n = Math.max(MIN_TEAMS, Math.min(MAX_TEAMS, n));
     const pc = playerCountFor(state.bracketType);
     if (n > state.teams.length) {
-      while (state.teams.length < n) state.teams.push({ name: '', players: new Array(pc).fill('') });
+      while (state.teams.length < n) state.teams.push({ name: '', players: new Array(pc).fill(''), roles: new Array(pc).fill('dps') });
     } else if (n < state.teams.length) {
       state.teams = state.teams.slice(0, n);
     }
@@ -346,7 +382,7 @@
   function resetTeams() {
     if (!confirm('Clear all team names and player rosters?\n\nThis keeps your bracket type, match format, and number of teams.')) return;
     const pc = playerCountFor(state.bracketType);
-    state.teams.forEach(t => { t.name = ''; t.players = new Array(pc).fill(''); });
+    state.teams.forEach(t => { t.name = ''; t.players = new Array(pc).fill(''); t.roles = new Array(pc).fill('dps'); });
     invalidateScores();
     saveState();
     renderSetup();
@@ -356,11 +392,16 @@
     if (!BRACKET_TYPES[type] || type === state.bracketType) return;
     state.bracketType = type;
     const pc = BRACKET_TYPES[type].players;
-    // resize each team's roster, preserving existing names
+    // resize each team's roster, preserving existing names + roles
     state.teams.forEach(t => {
       const next = new Array(pc).fill('');
-      for (let i = 0; i < Math.min(pc, t.players.length); i++) next[i] = t.players[i];
+      const nextRoles = new Array(pc).fill('dps');
+      for (let i = 0; i < Math.min(pc, t.players.length); i++) {
+        next[i] = t.players[i];
+        nextRoles[i] = (t.roles && t.roles[i] === 'healer') ? 'healer' : 'dps';
+      }
       t.players = next;
+      t.roles = nextRoles;
     });
     saveState();
     renderSetup();
@@ -385,16 +426,24 @@
   }
 
   // Adds names, skipping case-insensitive duplicates already in the list.
-  function addSoloNames(names) {
+  function addSoloNames(names, role) {
     if (!names || !names.length) return 0;
-    const seen = new Set(state.soloPlayers.map(p => p.toLowerCase()));
+    role = role === 'healer' ? 'healer' : 'dps';
+    const seen = new Set(state.soloPlayers.map(p => p.name.toLowerCase()));
     let added = 0;
     names.forEach(n => {
       const key = n.toLowerCase();
-      if (!seen.has(key)) { state.soloPlayers.push(n); seen.add(key); added++; }
+      if (!seen.has(key)) { state.soloPlayers.push({ name: n, role }); seen.add(key); added++; }
     });
     if (added > 0) { saveState(); renderSoloChips(); }
     return added;
+  }
+
+  function toggleSoloPlayerRole(idx) {
+    const p = state.soloPlayers[idx]; if (!p) return;
+    p.role = p.role === 'healer' ? 'dps' : 'healer';
+    saveState();
+    renderSoloChips();
   }
 
   function removeSoloPlayer(idx) {
@@ -422,18 +471,35 @@
   function renderSoloChips() {
     if (!els.soloChips) return;
     const list = state.soloPlayers;
-    els.soloChips.innerHTML = list.map((name, i) =>
-      `<span class="solo-chip">${escapeHtml(name)}<button type="button" data-action="remove" data-index="${i}" title="Remove ${escapeHtml(name)}">&times;</button></span>`
-    ).join('');
+    els.soloChips.innerHTML = list.map((p, i) => {
+      const isHealer = p.role === 'healer';
+      return `<span class="solo-chip">` +
+        `<button type="button" class="role-toggle ${isHealer ? 'role-healer' : 'role-dps'}" data-action="toggle-role" data-index="${i}" title="${isHealer ? 'Healer \u2014 click to set DPS' : 'DPS \u2014 click to set Healer'}">${isHealer ? 'H' : 'D'}</button>` +
+        `<span class="chip-name">${escapeHtml(p.name)}</span>` +
+        `<button type="button" class="chip-remove" data-action="remove" data-index="${i}" title="Remove ${escapeHtml(p.name)}">&times;</button></span>`;
+    }).join('');
 
     els.soloSizeInput.value = state.soloTeamSize;
     els.soloSizePresets.querySelectorAll('.toggle-btn').forEach(b =>
       b.classList.toggle('active', +b.dataset.size === state.soloTeamSize));
+    if (els.soloUseRolesToggle) els.soloUseRolesToggle.checked = !!state.soloUseRoles;
 
     const n = list.length, size = state.soloTeamSize;
     els.soloStatus.classList.remove('hidden', 'warn');
     if (n === 0) {
       els.soloStatus.textContent = 'Add players above, then shuffle them into teams.';
+    } else if (state.soloUseRoles) {
+      const healerCount = list.filter(p => p.role === 'healer').length;
+      const dpsCount = n - healerCount;
+      const dpsPerTeam = Math.max(size - 1, 0);
+      const maxByDps = dpsPerTeam > 0 ? Math.floor(dpsCount / dpsPerTeam) : healerCount;
+      const maxTeams = Math.min(healerCount, maxByDps);
+      let msg = `${n} players (${healerCount} healer${healerCount === 1 ? '' : 's'}, ${dpsCount} dps) \u2192 up to ${maxTeams} team${maxTeams === 1 ? '' : 's'} of ${size} (1 healer each)`;
+      if (maxTeams === 0) {
+        msg = `Need at least 1 healer${dpsPerTeam > 0 ? ' and ' + dpsPerTeam + ' dps' : ''} per team of ${size}. ` + msg;
+        els.soloStatus.classList.add('warn');
+      }
+      els.soloStatus.textContent = msg;
     } else {
       const fullTeams = Math.floor(n / size);
       const leftover = n % size;
@@ -449,22 +515,54 @@
   let lastSoloTeams = [];
   let lastSoloByes = [];
 
+  function fisherYates(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
   function shuffleSolo() {
+    if (state.soloUseRoles) shuffleSoloWithRoles();
+    else shuffleSoloPlain();
+  }
+
+  function shuffleSoloPlain() {
     const size = state.soloTeamSize;
-    const pool = state.soloPlayers.slice();
+    const pool = fisherYates(state.soloPlayers.slice());
     if (pool.length < size) {
       alert(`You need at least ${size} player${size === 1 ? '' : 's'} to form one team of ${size}.`);
       return;
-    }
-    // Fisher-Yates
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
     }
     const teams = [];
     let i = 0;
     for (; i + size <= pool.length; i += size) teams.push(pool.slice(i, i + size));
     const byes = pool.slice(i);
+    renderSoloResults(teams, byes);
+  }
+
+  // Guarantees exactly 1 healer per team, with the remaining slots filled
+  // by DPS. Number of teams is capped by whichever role runs out first.
+  function shuffleSoloWithRoles() {
+    const size = state.soloTeamSize;
+    const dpsPerTeam = Math.max(size - 1, 0);
+    const healers = fisherYates(state.soloPlayers.filter(p => p.role === 'healer').slice());
+    const dps = fisherYates(state.soloPlayers.filter(p => p.role !== 'healer').slice());
+    const maxByDps = dpsPerTeam > 0 ? Math.floor(dps.length / dpsPerTeam) : healers.length;
+    const numTeams = Math.min(healers.length, maxByDps);
+
+    if (numTeams < 1) {
+      alert(`Not enough players to form a team of ${size} with 1 healer each. You need at least 1 healer${dpsPerTeam > 0 ? ' and ' + dpsPerTeam + ' DPS' : ''} per team.`);
+      return;
+    }
+
+    const teams = [];
+    for (let t = 0; t < numTeams; t++) {
+      const team = [healers[t]].concat(dps.slice(t * dpsPerTeam, (t + 1) * dpsPerTeam));
+      teams.push(fisherYates(team));
+    }
+    const byes = healers.slice(numTeams).concat(dps.slice(numTeams * dpsPerTeam));
     renderSoloResults(teams, byes);
   }
 
@@ -475,7 +573,7 @@
     let html = '';
     if (teams.length) {
       html += `<div class="solo-results-toolbar">
-        <div class="solo-results-count">${teams.length} team${teams.length === 1 ? '' : 's'} of ${state.soloTeamSize}</div>
+        <div class="solo-results-count">${teams.length} team${teams.length === 1 ? '' : 's'} of ${state.soloTeamSize}${state.soloUseRoles ? ' \u2022 1 healer each' : ''}</div>
         <button type="button" class="primary-btn" data-action="generate-bracket">Generate Bracket &rarr;</button>
       </div>`;
     }
@@ -483,14 +581,14 @@
     teams.forEach((team, i) => {
       html += `<div class="solo-team-card">
         <div class="solo-team-head"><span class="seed-badge">${i + 1}</span><span class="solo-team-name">Team ${i + 1}</span></div>
-        <ul>${team.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul>
+        <ul>${team.map(p => `<li><span class="role-tag ${p.role === 'healer' ? 'healer' : 'dps'}">${p.role === 'healer' ? 'H' : 'D'}</span>${escapeHtml(p.name)}</li>`).join('')}</ul>
       </div>`;
     });
     html += '</div>';
     if (byes.length) {
       html += `<div class="solo-byes">
         <div class="solo-byes-title">Byes this round</div>
-        <div class="solo-byes-list">${byes.map(p => `<span>${escapeHtml(p)}</span>`).join('')}</div>
+        <div class="solo-byes-list">${byes.map(p => `<span>${p.role === 'healer' ? 'H \u00b7 ' : ''}${escapeHtml(p.name)}</span>`).join('')}</div>
       </div>`;
     }
     els.soloResults.innerHTML = html;
@@ -510,7 +608,12 @@
     const size = state.soloTeamSize;
     state.bracketType = size + 'v' + size;
     state.matchFormat = [1, 3, 5].includes(state.matchFormat) ? state.matchFormat : 1;
-    state.teams = lastSoloTeams.map((players, i) => ({ name: 'Team ' + (i + 1), players: players.slice() }));
+    state.arenaUseRoles = state.soloUseRoles;
+    state.teams = lastSoloTeams.map((team, i) => ({
+      name: 'Team ' + (i + 1),
+      players: team.map(p => p.name),
+      roles: team.map(p => p.role === 'healer' ? 'healer' : 'dps')
+    }));
     state.teamCount = state.teams.length;
     invalidateScores();
     saveState();
@@ -531,8 +634,13 @@
     let nameText, rosterHtml = '';
     if (team) {
       nameText = team.name.trim() ? team.name : ('Team ' + (team._seed || '?'));
-      const roster = team.players.filter(p => p && p.trim());
-      if (roster.length) rosterHtml = `<span class="roster">${escapeHtml(roster.join(' \u00b7 '))}</span>`;
+      const rosterEntries = team.players
+        .map((p, idx) => ({ name: p, role: (team.roles && team.roles[idx] === 'healer') ? 'healer' : 'dps' }))
+        .filter(e => e.name && e.name.trim());
+      if (rosterEntries.length) {
+        const rosterText = rosterEntries.map(e => (e.role === 'healer' ? 'H: ' : '') + e.name).join(' \u00b7 ');
+        rosterHtml = `<span class="roster">${escapeHtml(rosterText)}</span>`;
+      }
     } else if (isBye) {
       nameText = 'BYE';
     } else {
@@ -608,9 +716,12 @@
 
     // Big champion banner
     if (b.champion) {
-      const roster = b.champion.players.filter(p => p && p.trim());
+      const rosterEntries = b.champion.players
+        .map((p, idx) => ({ name: p, role: (b.champion.roles && b.champion.roles[idx] === 'healer') ? 'healer' : 'dps' }))
+        .filter(e => e.name && e.name.trim());
       const name = b.champion.name.trim() || ('Team ' + (b.champion._seed || '?'));
-      els.champName.innerHTML = escapeHtml(name) + (roster.length ? `<span class="champ-roster">${escapeHtml(roster.join(' \u00b7 '))}</span>` : '');
+      const rosterText = rosterEntries.map(e => (e.role === 'healer' ? 'H: ' : '') + e.name).join(' \u00b7 ');
+      els.champName.innerHTML = escapeHtml(name) + (rosterEntries.length ? `<span class="champ-roster">${escapeHtml(rosterText)}</span>` : '');
       els.champBanner.classList.remove('hidden');
     } else {
       els.champBanner.classList.add('hidden');
@@ -654,8 +765,11 @@
       L.push('');
     }
     if (b.champion) {
-      const roster = b.champion.players.filter(p => p && p.trim());
-      L.push('\ud83c\udfc6 CHAMPIONS: ' + teamLabel(b.champion) + (roster.length ? ' (' + roster.join(', ') + ')' : ''));
+      const rosterEntries = b.champion.players
+        .map((p, idx) => ({ name: p, role: (b.champion.roles && b.champion.roles[idx] === 'healer') ? 'healer' : 'dps' }))
+        .filter(e => e.name && e.name.trim());
+      const rosterText = rosterEntries.map(e => (e.role === 'healer' ? 'H: ' : '') + e.name).join(', ');
+      L.push('\ud83c\udfc6 CHAMPIONS: ' + teamLabel(b.champion) + (rosterEntries.length ? ' (' + rosterText + ')' : ''));
     } else {
       L.push('Champion: TBD');
     }
@@ -808,6 +922,16 @@
       const action = btn.dataset.action;
       if (action === 'up') reorder(i, -1);
       else if (action === 'down') reorder(i, 1);
+      else if (action === 'toggle-role') {
+        const team = state.teams[i]; if (!team) return;
+        const j = +btn.dataset.player;
+        if (!Array.isArray(team.roles) || team.roles.length !== team.players.length) {
+          team.roles = team.players.map((_, idx) => (team.roles && team.roles[idx]) || 'dps');
+        }
+        team.roles[j] = team.roles[j] === 'healer' ? 'dps' : 'healer';
+        saveState();
+        renderSetup();
+      }
       else if (action === 'del') {
         if (state.teams.length <= MIN_TEAMS) { alert('You need at least 2 teams.'); return; }
         state.teams.splice(i, 1);
@@ -827,8 +951,29 @@
       setTeamCount(+chip.dataset.count);
     });
 
+    // Role requirement toggle (Arena)
+    els.arenaUseRolesToggle.addEventListener('change', () => {
+      state.arenaUseRoles = els.arenaUseRolesToggle.checked;
+      saveState();
+      renderSetup();
+    });
+
     els.generateBtn.addEventListener('click', () => {
       if (state.teams.length < MIN_TEAMS) { alert('You need at least 2 teams.'); return; }
+      if (state.arenaUseRoles) {
+        const bad = [];
+        state.teams.forEach((t, i) => {
+          const filled = t.players.map((p, j) => ({ p, role: t.roles && t.roles[j] })).filter(x => x.p && x.p.trim());
+          if (filled.length > 0) {
+            const healerCount = filled.filter(x => x.role === 'healer').length;
+            if (healerCount !== 1) bad.push(t.name.trim() || ('Team ' + (i + 1)));
+          }
+        });
+        if (bad.length) {
+          const ok = confirm(`These teams don't have exactly 1 healer: ${bad.join(', ')}. Continue anyway?`);
+          if (!ok) return;
+        }
+      }
       showView('bracket');
       renderBracket();
     });
@@ -864,15 +1009,22 @@
       setSoloTeamSize(+btn.dataset.size);
     });
 
+    // Solo Shuffle: role requirement toggle
+    els.soloUseRolesToggle.addEventListener('change', () => {
+      state.soloUseRoles = els.soloUseRolesToggle.checked;
+      saveState();
+      renderSoloChips();
+    });
+
     // Solo Shuffle: adding players
     els.soloPasteAddBtn.addEventListener('click', () => {
-      addSoloNames(parseNames(els.soloPasteBox.value));
+      addSoloNames(parseNames(els.soloPasteBox.value), 'dps');
       els.soloPasteBox.value = '';
     });
     function addSingleSoloPlayer() {
       const v = els.soloAddInput.value.trim();
       if (!v) return;
-      addSoloNames([v]);
+      addSoloNames([v], els.soloAddRole.value);
       els.soloAddInput.value = '';
       els.soloAddInput.focus();
     }
@@ -881,10 +1033,12 @@
       if (e.key === 'Enter') { e.preventDefault(); addSingleSoloPlayer(); }
     });
 
-    // Solo Shuffle: remove a player chip
+    // Solo Shuffle: remove a player chip, or toggle their role
     els.soloChips.addEventListener('click', e => {
-      const btn = e.target.closest('[data-action="remove"]'); if (!btn) return;
-      removeSoloPlayer(+btn.dataset.index);
+      const btn = e.target.closest('[data-action]'); if (!btn) return;
+      const idx = +btn.dataset.index;
+      if (btn.dataset.action === 'remove') removeSoloPlayer(idx);
+      else if (btn.dataset.action === 'toggle-role') toggleSoloPlayerRole(idx);
     });
 
     // Solo Shuffle: shuffle / clear
