@@ -1,48 +1,34 @@
-# MDGA Tournament Bracket Generator
+# MDGA Arena — Tournament Bracket Generator
 
-A single-page web app for generating **single-elimination arena tournament brackets** for the guild **Make Durotar Great Again (MDGA)**.
+A single-page tournament bracket generator for the guild **Make Durotar Great Again (MDGA)**. No build step, no dependencies — just open `index.html` in any modern browser.
 
-Supports the standard WoW arena compositions:
+## Quick start
+1. Double-click `index.html`, or serve the folder (`python -m http.server`) and open it.
+2. Pick a format (**2v2 / 3v3 / 5v5**) and a team count (2–32).
+3. Enter each team's players, then **Generate Bracket**.
+4. Score matches by typing or clicking a team name; winners advance automatically.
 
-| Mode | Team size |
-|------|-----------|
-| 2v2  | 2 players |
-| 3v3  | 3 players |
-| 5v5  | 5 players |
-
-You pick the number of teams and enter your own player rosters; the app builds a properly seeded bracket (with byes for non-power-of-two team counts) and lets you click through match results to crown a champion.
-
-## How to run
-
-No build step, no dependencies. Any one of these works:
-
-**Option A — just open it:**
-Double-click `index.html` in your file explorer. That's it.
-
-**Option B — local server (most reliable):**
-```bash
-cd "C:\GITHUB PROJECTS\Tournament Generator"
-python -m http.server 8000
-```
-Then visit <http://localhost:8000>.
-
-## How to use
-
-1. **Choose the format** — 2v2, 3v3, or 5v5.
-2. **Set the number of teams.**
-3. **Enter each team's players.** Give each team a name and list its members (the app pre-fills the right number of player slots for the chosen mode).
-4. **Generate the bracket.** Teams are seeded in standard tournament order; byes go to the top seeds when the team count isn't a power of two.
-5. **Record results** as matches happen — click a team to mark the winner, and the next round fills in automatically. Keep going until you have a champion.
+## Features
+- **Formats:** 2v2, 3v3, 5v5 — roster fields auto-resize per team size.
+- **Team count:** stepper from 2 to 32 teams.
+- **Seeding & byes:** top seeds get byes when the count isn't a power of 2; a live *Bye preview* in Setup shows exactly who gets one (with a lopsided-count warning and quick-fix chips).
+- **Match format:** Best of 1 / 3 / 5.
+- **Roster editing:** reorder players (up/down), shuffle, add/remove teams and players.
+- **Scoring:** type scores or click a team to mark the winner; winners auto-advance through every round. A hover **✕** on any decided match clears its result and re-opens downstream rounds.
+- **Champion banner** once the final is decided.
+- **Copy Results:** one-click plain-text bracket + champion summary to your clipboard.
+- **Print / Save PDF** with MDGA title header.
+- **Roster presets:** save, load, and delete named team rosters (stored in your browser).
+- **JSON backup:** export the full tournament state to a `.json` file, or import one to restore it.
+- **Persistence:** everything is saved to `localStorage`, so a refresh keeps your setup — and you land back on the view you were last on.
 
 ## Files
-
 | File | Purpose |
 |------|---------|
-| `index.html` | Page structure |
-| `app.js`     | Bracket logic, seeding, byes, result tracking |
-| `styles.css` | Styling (including print styles for the bracket) |
+| `index.html` | Page structure (Setup + Bracket views). |
+| `app.js` | All logic: seeding, bracket math, scoring, persistence, presets, export/import. |
+| `styles.css` | Gold arena theme, layout, print styles. |
 
 ## Notes
-- Seeding follows standard bracket order (e.g. for 8 teams: 1v8, 4v5, 2v7, 3v6 in round one).
-- Byes are assigned to the highest seeds so the field rounds up to the next power of two.
-- Everything runs locally in your browser — no data is sent anywhere.
+- Data lives in your browser's `localStorage`; use **Export JSON** for a portable backup or to move between machines.
+- Pure front-end — no server, no account, nothing leaves your machine.

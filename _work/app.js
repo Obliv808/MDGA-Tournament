@@ -7,7 +7,6 @@
   'use strict';
 
   const STORAGE_KEY = 'mdga_tournament_v1';
-  const PRESETS_KEY = 'mdga_presets_v1';
   const NS = 'http://www.w3.org/2000/svg';
   const MIN_TEAMS = 2;
   const MAX_TEAMS = 32;
@@ -37,8 +36,7 @@
       matchFormat: 1,
       teamCount: 8,
       teams: defaultTeams(8, BRACKET_TYPES['3v3'].players),
-      scores: {},
-      view: 'setup'
+      scores: {}
     };
   }
 
@@ -68,7 +66,6 @@
         players: Array.from({ length: pc }, (_, i) => ((t && t.players && t.players[i]) || ''))
       }));
       if (!state.scores || typeof state.scores !== 'object') state.scores = {};
-      state.view = (state.view === 'bracket' || state.view === 'setup') ? state.view : 'setup';
       return state;
     } catch (e) {
       return freshState();
@@ -181,17 +178,7 @@
       infoTeams: document.getElementById('infoTeams'),
       champBanner: document.getElementById('championBanner'),
       champName: document.getElementById('champName'),
-      canvas: document.getElementById('bracketCanvas'),
-      copyResultsBtn: document.getElementById('copyResultsBtn'),
-      byePreview: document.getElementById('byePreview'),
-      presetName: document.getElementById('presetName'),
-      savePresetBtn: document.getElementById('savePresetBtn'),
-      presetSelect: document.getElementById('presetSelect'),
-      loadPresetBtn: document.getElementById('loadPresetBtn'),
-      deletePresetBtn: document.getElementById('deletePresetBtn'),
-      exportJsonBtn: document.getElementById('exportJsonBtn'),
-      importJsonBtn: document.getElementById('importJsonBtn'),
-      importFile: document.getElementById('importFile')
+      canvas: document.getElementById('bracketCanvas')
     };
   }
 
@@ -230,63 +217,6 @@
       );
     });
     els.teamList.innerHTML = html;
-    renderByePreview();
-    renderPresets();
-  }
-
-  /* ---------------- Bye preview (setup) ---------------- */
-  // Returns the seeds that receive byes for the current team count.
-  function byeSeeds() {
-    const N = state.teams.length;
-    const B = nextPow2(N);
-    if (B <= N) return [];
-    const order = seedOrder(B);
-    const seeds = [];
-    for (let i = 0; i < B; i += 2) {
-      const sa = order[i], sb = order[i + 1];
-      if (sa > N && sb <= N) seeds.push(sb);   // A empty, B is a real team -> B gets bye
-      else if (sb > N && sa <= N) seeds.push(sa);
-    }
-    return seeds.sort((a, b) => a - b);
-  }
-
-  function renderByePreview() {
-    const box = els.byePreview;
-    if (!box) return;
-    const N = state.teams.length;
-    const B = nextPow2(N);
-    const byes = byeSeeds();
-
-    if (byes.length === 0) {
-      box.classList.remove('hidden');
-      box.innerHTML = `<div class="bye-ok">&#10003; Full bracket of ${B} teams &mdash; no byes.</div>`;
-      return;
-    }
-
-    const names = byes.map(s => {
-      const t = state.teams[s - 1];
-      return `seed ${s}${t && t.name.trim() ? ' ' + escapeHtml(t.name) : ''}`;
-    }).join(', ');
-
-    const lopsided = byes.length >= Math.ceil(N / 2);
-    // Suggest the nearest "clean" counts: next power of two, and B-1 if > N.
-    let suggestions = [];
-    if (B <= MAX_TEAMS && B > N) suggestions.push(B);        // pad to full bracket
-    const prevPow2 = Math.floor(Math.log2(N));
-    const lower = Math.pow(2, prevPow2);
-    if (lower >= MIN_TEAMS && lower < N) suggestions.push(lower);  // drop below current pow2
-    suggestions = [...new Set(suggestions)].sort((a, b) => a - b);
-    const suggestHtml = suggestions.length
-      ? `<div class="bye-suggest">Consider <button type="button" class="count-chip" data-count="${suggestions[0]}">${suggestions[0]}</button>` +
-        (suggestions.length > 1 ? ` or <button type="button" class="count-chip" data-count="${suggestions[1]}">${suggestions[1]}</button>` : '') +
-        ` teams.</div>`
-      : '';
-
-    box.classList.remove('hidden');
-    box.innerHTML =
-      `<div class="bye-warn">&#9888; ${byes.length} of ${N} teams get a bye: <strong>${names}</strong>.</div>` +
-      (lopsided ? `<div class="bye-lop">That leaves an uneven bracket &mdash; most teams skip round one.</div>` : '') +
-      suggestHtml;
   }
 
   function setTeamCount(n) {
@@ -355,95 +285,6 @@
     renderSetup();
   }
 
-  /* ---------------- Presets & backup ---------------- */
-  function loadPresets() { try { const r = localStorage.getItem(PRESETS_KEY); return r ? JSON.parse(r) : {}; } catch (e) { return {}; } }
-  function savePresets(o) { try { localStorage.setItem(PRESETS_KEY, JSON.stringify(o)); } catch (e) { /* ignore */ } }
-
-  // Normalise + apply a roster config (from a preset or an import) to live state.
-  function applyRoster(cfg) {
-    if (!cfg) return;
-    cfg.bracketType = BRACKET_TYPES[cfg.bracketType] ? cfg.bracketType : '3v3';
-    cfg.matchFormat = [1, 3, 5].includes(cfg.matchFormat) ? cfg.matchFormat : 1;
-    const pc = BRACKET_TYPES[cfg.bracketType].players;
-    let teams = Array.isArray(cfg.teams) ? cfg.teams : [];
-    if (teams.length < MIN_TEAMS) teams = defaultTeams(8, pc);
-    teams = teams.slice(0, MAX_TEAMS).map(t => ({
-      name: (t && t.name) || '',
-      players: Array.from({ length: pc }, (_, i) => ((t && t.players && t.players[i]) || ''))
-    }));
-    state.bracketType = cfg.bracketType;
-    state.matchFormat = cfg.matchFormat;
-    state.teams = teams;
-    state.teamCount = teams.length;
-    invalidateScores();
-    saveState();
-    renderSetup();
-  }
-
-  function renderPresets() {
-    const sel = els.presetSelect; if (!sel) return;
-    const names = Object.keys(loadPresets()).sort((a, b) => a.localeCompare(b));
-    const prev = sel.value;
-    if (names.length === 0) { sel.innerHTML = '<option value="">No saved presets</option>'; sel.disabled = true; return; }
-    sel.disabled = false;
-    sel.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
-    if (prev && names.includes(prev)) sel.value = prev;
-  }
-
-  function savePreset() {
-    const name = els.presetName.value.trim();
-    if (!name) { alert('Give the preset a name first.'); els.presetName.focus(); return; }
-    const presets = loadPresets();
-    presets[name] = { bracketType: state.bracketType, matchFormat: state.matchFormat, teams: JSON.parse(JSON.stringify(state.teams)) };
-    savePresets(presets);
-    els.presetName.value = '';
-    renderPresets();
-    flashBtn(els.savePresetBtn, 'Saved!');
-  }
-
-  function loadPreset() {
-    const name = els.presetSelect.value; if (!name) { alert('Choose a preset to load.'); return; }
-    const cfg = loadPresets()[name];
-    if (!cfg) { renderPresets(); return; }
-    applyRoster(cfg);
-  }
-
-  function deletePreset() {
-    const name = els.presetSelect.value; if (!name) { alert('Choose a preset to delete.'); return; }
-    if (!confirm('Delete preset \u201c' + name + '\u201d?')) return;
-    const presets = loadPresets(); delete presets[name]; savePresets(presets); renderPresets();
-  }
-
-  function exportJSON() {
-    const data = { app: 'mdga-tournament', version: 1, exportedAt: new Date().toISOString(), state: {
-      guildName: state.guildName, abbr: state.abbr, bracketType: state.bracketType,
-      matchFormat: state.matchFormat, teams: state.teams, scores: state.scores
-    } };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = (state.abbr || 'mdga') + '-tournament.json';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-
-  function importJSON(file) {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result);
-        const s = (data && data.state) || data;
-        if (!s || !Array.isArray(s.teams)) { alert('That file does not look like a tournament export.'); return; }
-        if (Object.keys(state.scores).length && !confirm('Importing will replace the current teams and scores. Continue?')) return;
-        applyRoster(s);
-        if (s.scores && typeof s.scores === 'object') { state.scores = s.scores; saveState(); }
-        if (s.guildName) { state.guildName = s.guildName; const h = document.getElementById('guildName'); if (h) h.textContent = s.guildName; saveState(); }
-      } catch (e) { alert('Could not read that file: ' + e.message); }
-    };
-    reader.readAsText(file);
-  }
-
   /* ---------------- Bracket view ---------------- */
   function sideHtml(team, opts) {
     const { winner, isBye, isTbd, enabled, score, max, r, i, sideKey } = opts;
@@ -501,11 +342,7 @@
            + sideHtml(hasB ? m.b : null, { winner: false, isBye: false, isTbd: !hasB, enabled: false, score: 0, max: needed, r, i, sideKey: 'b' });
     }
 
-    let clearBtn = '';
-    if (active && m.winner !== null) {
-      clearBtn = `<button type="button" class="clear-result" data-action="clear" data-round="${r}" data-index="${i}" title="Clear result">&times;</button>`;
-    }
-    return `<div class="match${m.winner !== null ? ' decided' : ''}" data-round="${r}" data-index="${i}">${clearBtn}${html}</div>`;
+    return `<div class="match${m.winner !== null ? ' decided' : ''}" data-round="${r}" data-index="${i}">${html}</div>`;
   }
 
   function renderBracket() {
@@ -547,73 +384,6 @@
         lastWinners[r + '-' + i] = b.rounds[r][i].winner;
 
     requestAnimationFrame(drawConnectors);
-  }
-
-  /* ---------------- Copy results (plain text for Discord) ---------------- */
-  function teamLabel(t) {
-    return t && t.name.trim() ? t.name : ('Team ' + (t._seed || '?'));
-  }
-
-  function buildResultsText(b) {
-    const L = [];
-    L.push(state.guildName + ' \u2014 Arena Tournament');
-    L.push(state.bracketType + ' \u2022 Best of ' + state.matchFormat + ' \u2022 ' + b.N + ' teams' + (b.N < b.B ? ' (' + (b.B - b.N) + ' byes)' : ''));
-    L.push('');
-    for (let r = 0; r < b.rounds.length; r++) {
-      const count = b.B / Math.pow(2, r);
-      L.push(roundLabel(count).toUpperCase());
-      for (let i = 0; i < b.rounds[r].length; i++) {
-        const m = b.rounds[r][i];
-        if (!m.a && !m.b) continue;
-        if (r === 0 && m.a && !m.b) { L.push('  ' + teamLabel(m.a) + '  \u2014 BYE'); continue; }
-        if (r === 0 && !m.a && m.b) { L.push('  ' + teamLabel(m.b) + '  \u2014 BYE'); continue; }
-        const la = m.a ? teamLabel(m.a) : 'TBD';
-        const lb = m.b ? teamLabel(m.b) : 'TBD';
-        if (m.winner !== null) {
-          L.push('  ' + m.scoreA + '\u2013' + m.scoreB + '   ' + la + ' vs ' + lb + '   \u2192 ' + teamLabel(m.winner === 0 ? m.a : m.b));
-        } else {
-          L.push('  \u2014     ' + la + ' vs ' + lb);
-        }
-      }
-      L.push('');
-    }
-    if (b.champion) {
-      const roster = b.champion.players.filter(p => p && p.trim());
-      L.push('\ud83c\udfc6 CHAMPIONS: ' + teamLabel(b.champion) + (roster.length ? ' (' + roster.join(', ') + ')' : ''));
-    } else {
-      L.push('Champion: TBD');
-    }
-    return L.join('\n');
-  }
-
-  let copyTimer = null;
-  function flashBtn(btn, label) {
-    const orig = btn.textContent;
-    btn.textContent = label;
-    btn.classList.add('flash');
-    clearTimeout(copyTimer);
-    copyTimer = setTimeout(() => { btn.textContent = orig; btn.classList.remove('flash'); }, 1600);
-  }
-
-  function fallbackCopy(text, cb) {
-    const ta = document.createElement('textarea');
-    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
-    document.body.appendChild(ta); ta.focus(); ta.select();
-    try { document.execCommand('copy'); } catch (e) { /* ignore */ }
-    document.body.removeChild(ta);
-    if (cb) cb();
-  }
-
-  function copyResults() {
-    const b = computeBracket();
-    if (!b) { alert('Generate a bracket first.'); return; }
-    const text = buildResultsText(b);
-    const done = () => flashBtn(els.copyResultsBtn, 'Copied!');
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
-    } else {
-      fallbackCopy(text, done);
-    }
   }
 
   /* ---------------- Connectors (SVG overlay) ---------------- */
@@ -673,8 +443,6 @@
     const setup = name === 'setup';
     els.setupView.classList.toggle('hidden', !setup);
     els.bracketView.classList.toggle('hidden', setup);
-    state.view = name;
-    saveState();
     if (setup) els.subtitle.textContent = 'Arena Tournament Bracket Generator';
     window.scrollTo(0, 0);
   }
@@ -725,12 +493,6 @@
     els.shuffleBtn.addEventListener('click', shuffleTeams);
     els.resetTeamsBtn.addEventListener('click', resetTeams);
 
-    // Bye preview: quick-set team count chips
-    els.byePreview.addEventListener('click', e => {
-      const chip = e.target.closest('.count-chip'); if (!chip) return;
-      setTeamCount(+chip.dataset.count);
-    });
-
     els.generateBtn.addEventListener('click', () => {
       if (state.teams.length < MIN_TEAMS) { alert('You need at least 2 teams.'); return; }
       showView('bracket');
@@ -748,20 +510,6 @@
     });
 
     els.printBtn.addEventListener('click', () => window.print());
-
-    // Copy results to clipboard
-    els.copyResultsBtn.addEventListener('click', copyResults);
-
-    // Presets & backup
-    els.savePresetBtn.addEventListener('click', savePreset);
-    els.loadPresetBtn.addEventListener('click', loadPreset);
-    els.deletePresetBtn.addEventListener('click', deletePreset);
-    els.exportJsonBtn.addEventListener('click', exportJSON);
-    els.importJsonBtn.addEventListener('click', () => els.importFile.click());
-    els.importFile.addEventListener('change', e => {
-      importJSON(e.target.files && e.target.files[0]);
-      e.target.value = '';   // allow re-importing the same file
-    });
 
     // Bracket: score entry
     els.canvas.addEventListener('input', e => {
@@ -782,24 +530,16 @@
       if (m.winner !== lastWinners[key]) renderBracket();
     });
 
-    // Bracket: quick-win by clicking a team name, or clear a decided result
+    // Bracket: quick-win by clicking a team name
     els.canvas.addEventListener('click', e => {
-      const t = e.target.closest('[data-action]'); if (!t) return;
-      const action = t.dataset.action;
-      const r = +t.dataset.round, i = +t.dataset.index;
+      const t = e.target.closest('[data-action="win"]'); if (!t) return;
+      const r = +t.dataset.round, i = +t.dataset.index, side = t.dataset.side;
+      const needed = Math.ceil(state.matchFormat / 2);
       const key = r + '-' + i;
-      if (action === 'win') {
-        const side = t.dataset.side;
-        const needed = Math.ceil(state.matchFormat / 2);
-        state.scores[key] = state.scores[key] || { a: 0, b: 0 };
-        state.scores[key][side] = needed;
-        saveState();
-        renderBracket();
-      } else if (action === 'clear') {
-        delete state.scores[key];
-        saveState();
-        renderBracket();
-      }
+      state.scores[key] = state.scores[key] || { a: 0, b: 0 };
+      state.scores[key][side] = needed;
+      saveState();
+      renderBracket();
     });
 
     // Redraw connectors on resize / font load
@@ -816,13 +556,7 @@
     state = loadState();
     bindEvents();
     renderSetup();
-    // Restore the last view, but only land on the bracket if it's actually valid.
-    if (state.view === 'bracket' && state.teams.length >= MIN_TEAMS) {
-      showView('bracket');
-      renderBracket();
-    } else {
-      showView('setup');
-    }
+    showView('setup');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

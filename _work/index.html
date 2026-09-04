@@ -58,31 +58,6 @@
         </div>
 
         <p class="hint">The list order below is the <strong>seed order</strong>. Use the arrows to reorder, or shuffle. Teams that don't fill a full bracket automatically receive byes.</p>
-
-        <div id="byePreview" class="bye-preview hidden"></div>
-      </div>
-
-      <!-- Presets & backup -->
-      <div class="panel presets-panel">
-        <h2 class="panel-title">Presets &amp; Backup</h2>
-        <p class="hint">Save this month's rosters and reload them next tournament, or back everything up to a file.</p>
-
-        <div class="preset-row">
-          <input type="text" id="presetName" class="preset-name" placeholder="Preset name (e.g. Sept 3v3)">
-          <button type="button" id="savePresetBtn" class="ghost-btn">Save Preset</button>
-        </div>
-
-        <div class="preset-row">
-          <select id="presetSelect" class="preset-select"></select>
-          <button type="button" id="loadPresetBtn" class="ghost-btn">Load</button>
-          <button type="button" id="deletePresetBtn" class="danger-btn">Delete</button>
-        </div>
-
-        <div class="preset-row">
-          <button type="button" id="exportJsonBtn" class="ghost-btn">Export JSON</button>
-          <button type="button" id="importJsonBtn" class="ghost-btn">Import JSON</button>
-          <input type="file" id="importFile" accept="application/json,.json" class="hidden-file">
-        </div>
       </div>
 
       <!-- Team list -->
@@ -106,7 +81,6 @@
           <span class="badge" id="infoTeams">8 teams</span>
         </div>
         <div class="toolbar-actions">
-          <button type="button" id="copyResultsBtn" class="ghost-btn">Copy Results</button>
           <button type="button" id="editSetupBtn" class="ghost-btn">Edit Setup</button>
           <button type="button" id="printBtn" class="ghost-btn">Print / Save PDF</button>
           <button type="button" id="newTournamentBtn" class="danger-btn">New Tournament</button>
