@@ -20,6 +20,12 @@
   </header>
 
   <main>
+    <!-- ===================== MODE BAR ===================== -->
+    <div class="mode-bar" id="modeBar" role="tablist" aria-label="App mode">
+      <button type="button" class="mode-btn active" data-mode="bracket" id="modeBracketBtn">&#9876;&#65038; Arena Bracket</button>
+      <button type="button" class="mode-btn" data-mode="solo" id="modeSoloBtn">&#127922; Solo Shuffle Wargames</button>
+    </div>
+
     <!-- ===================== SETUP VIEW ===================== -->
     <section id="setupView" class="view">
       <div class="panel setup-panel">
@@ -62,29 +68,6 @@
         <div id="byePreview" class="bye-preview hidden"></div>
       </div>
 
-      <!-- Presets & backup -->
-      <div class="panel presets-panel">
-        <h2 class="panel-title">Presets &amp; Backup</h2>
-        <p class="hint">Save this month's rosters and reload them next tournament, or back everything up to a file.</p>
-
-        <div class="preset-row">
-          <input type="text" id="presetName" class="preset-name" placeholder="Preset name (e.g. Sept 3v3)">
-          <button type="button" id="savePresetBtn" class="ghost-btn">Save Preset</button>
-        </div>
-
-        <div class="preset-row">
-          <select id="presetSelect" class="preset-select"></select>
-          <button type="button" id="loadPresetBtn" class="ghost-btn">Load</button>
-          <button type="button" id="deletePresetBtn" class="danger-btn">Delete</button>
-        </div>
-
-        <div class="preset-row">
-          <button type="button" id="exportJsonBtn" class="ghost-btn">Export JSON</button>
-          <button type="button" id="importJsonBtn" class="ghost-btn">Import JSON</button>
-          <input type="file" id="importFile" accept="application/json,.json" class="hidden-file">
-        </div>
-      </div>
-
       <!-- Team list -->
       <div id="teamList" class="team-list"></div>
 
@@ -121,6 +104,54 @@
 
       <div class="bracket-scroll">
         <div class="bracket-canvas" id="bracketCanvas"></div>
+      </div>
+    </section>
+
+    <!-- ===================== SOLO SHUFFLE VIEW ===================== -->
+    <section id="soloView" class="view hidden">
+      <div class="panel setup-panel">
+        <h2 class="panel-title">Solo Shuffle Wargames</h2>
+        <p class="hint">Paste or add a list of players, pick the team size, then shuffle. Leftover players who don't fill a full team are listed as <strong>byes</strong>, so nobody is silently dropped.</p>
+      </div>
+
+      <div class="solo-view">
+        <div class="panel solo-config">
+          <h2 class="panel-title">Players &amp; Team Size</h2>
+
+          <div class="solo-size-row">
+            <div class="solo-size-control">
+              <span class="label">Players per team</span>
+              <input type="number" id="soloSizeInput" class="solo-count-input" min="1" max="99" value="3">
+            </div>
+            <div class="toggle-row" id="soloSizePresets" role="group" aria-label="Team size presets">
+              <button type="button" class="toggle-btn" data-size="2">2</button>
+              <button type="button" class="toggle-btn active" data-size="3">3</button>
+              <button type="button" class="toggle-btn" data-size="5">5</button>
+            </div>
+          </div>
+
+          <div class="solo-pool-wrap">
+            <label class="group-label" for="soloPasteBox">Add many at once</label>
+            <textarea id="soloPasteBox" class="solo-pool-input" placeholder="Paste players &mdash; one per line, or comma-separated"></textarea>
+            <button type="button" id="soloPasteAddBtn" class="ghost-btn solo-paste-btn">Add List</button>
+          </div>
+
+          <div class="solo-add-row">
+            <input type="text" id="soloAddInput" placeholder="&hellip;or type a single player and press Add">
+            <button type="button" id="soloAddBtn" class="ghost-btn">Add</button>
+          </div>
+
+          <div id="soloChips" class="solo-list"></div>
+
+          <div class="solo-actions">
+            <button type="button" id="soloShuffleBtn" class="primary-btn">&#127922; Shuffle Teams</button>
+            <button type="button" id="soloClearBtn" class="danger-btn">Clear All</button>
+          </div>
+
+          <div id="soloStatus" class="solo-status hidden"></div>
+        </div>
+
+        <div class="solo-results" id="soloResults"></div>
       </div>
     </section>
   </main>

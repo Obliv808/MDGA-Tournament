@@ -9,6 +9,9 @@ A single-page tournament bracket generator for the guild **Make Durotar Great Ag
 4. Score matches by typing or clicking a team name; winners advance automatically.
 
 ## Features
+- **Two modes**, switchable any time from the top mode bar:
+  - **⚔️ Arena Bracket** — seeded single-elimination tournament.
+  - **🎲 Solo Shuffle Wargames** — dump a list of individual players and deal them at random into teams.
 - **Formats:** 2v2, 3v3, 5v5 — roster fields auto-resize per team size.
 - **Team count:** stepper from 2 to 32 teams.
 - **Seeding & byes:** top seeds get byes when the count isn't a power of 2; a live *Bye preview* in Setup shows exactly who gets one (with a lopsided-count warning and quick-fix chips).
@@ -18,9 +21,9 @@ A single-page tournament bracket generator for the guild **Make Durotar Great Ag
 - **Champion banner** once the final is decided.
 - **Copy Results:** one-click plain-text bracket + champion summary to your clipboard.
 - **Print / Save PDF** with MDGA title header.
-- **Roster presets:** save, load, and delete named team rosters (stored in your browser).
-- **JSON backup:** export the full tournament state to a `.json` file, or import one to restore it.
-- **Persistence:** everything is saved to `localStorage`, so a refresh keeps your setup — and you land back on the view you were last on.
+- **Solo Shuffle Wargames:** add players one at a time or paste a whole list (one per line or comma-separated), pick a team size (with quick-select chips for 2/3/5), then shuffle. Any players left over once teams are filled are called out as byes rather than silently dropped. Add/remove players and re-shuffle as many times as you like.
+- **Solo Shuffle → Bracket:** once you've shuffled, hit **Generate Bracket** on the results panel to seed those exact teams straight into the Arena Bracket flow (works for any team size, not just 2v2/3v3/5v5). Any leftover byes are excluded and you're prompted before they're dropped.
+- **Persistence:** everything — including the solo shuffle player list — is saved to `localStorage`, so a refresh keeps your setup and lands you back on the mode/view you were last on.
 
 ## Files
 | File | Purpose |

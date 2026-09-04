@@ -7,7 +7,6 @@
   'use strict';
 
   const STORAGE_KEY = 'mdga_tournament_v1';
-  const PRESETS_KEY = 'mdga_presets_v1';
   const NS = 'http://www.w3.org/2000/svg';
   const MIN_TEAMS = 2;
   const MAX_TEAMS = 32;
@@ -17,6 +16,14 @@
     '3v3': { label: '3v3 Arena', players: 3 },
     '5v5': { label: '5v5 Arena', players: 5 }
   };
+
+  // Player count for a bracket type. Handles the three built-in presets
+  // plus custom "NvN" labels generated from Solo Shuffle team sizes.
+  function playerCountFor(type) {
+    if (BRACKET_TYPES[type]) return BRACKET_TYPES[type].players;
+    const n = parseInt(String(type), 10);
+    return n > 0 ? n : 1;
+  }
 
   /* ---------------- State ---------------- */
   let state = null;
@@ -33,12 +40,15 @@
     return {
       guildName: 'Make Durotar Great Again',
       abbr: 'MDGA',
+      mode: 'bracket',
       bracketType: '3v3',
       matchFormat: 1,
       teamCount: 8,
       teams: defaultTeams(8, BRACKET_TYPES['3v3'].players),
       scores: {},
-      view: 'setup'
+      view: 'setup',
+      soloPlayers: [],
+      soloTeamSize: 3
     };
   }
 
@@ -54,9 +64,9 @@
       const base = freshState();
       // merge with defaults for safety
       state = Object.assign(base, s);
-      state.bracketType = BRACKET_TYPES[state.bracketType] ? state.bracketType : '3v3';
+      state.bracketType = (BRACKET_TYPES[state.bracketType] || /^\d+v\d+$/.test(state.bracketType)) ? state.bracketType : '3v3';
       if (![1, 3, 5].includes(state.matchFormat)) state.matchFormat = 1;
-      const pc = BRACKET_TYPES[state.bracketType].players;
+      const pc = playerCountFor(state.bracketType);
       // normalise teams
       if (!Array.isArray(state.teams) || state.teams.length < MIN_TEAMS) {
         state.teamCount = 8;
@@ -69,6 +79,12 @@
       }));
       if (!state.scores || typeof state.scores !== 'object') state.scores = {};
       state.view = (state.view === 'bracket' || state.view === 'setup') ? state.view : 'setup';
+      state.mode = state.mode === 'solo' ? 'solo' : 'bracket';
+      state.soloPlayers = Array.isArray(state.soloPlayers)
+        ? state.soloPlayers.filter(p => typeof p === 'string' && p.trim()).map(p => p.trim())
+        : [];
+      const sz = Math.round(+state.soloTeamSize);
+      state.soloTeamSize = Number.isFinite(sz) && sz >= 1 ? Math.min(99, Math.max(1, sz)) : 3;
       return state;
     } catch (e) {
       return freshState();
@@ -184,14 +200,19 @@
       canvas: document.getElementById('bracketCanvas'),
       copyResultsBtn: document.getElementById('copyResultsBtn'),
       byePreview: document.getElementById('byePreview'),
-      presetName: document.getElementById('presetName'),
-      savePresetBtn: document.getElementById('savePresetBtn'),
-      presetSelect: document.getElementById('presetSelect'),
-      loadPresetBtn: document.getElementById('loadPresetBtn'),
-      deletePresetBtn: document.getElementById('deletePresetBtn'),
-      exportJsonBtn: document.getElementById('exportJsonBtn'),
-      importJsonBtn: document.getElementById('importJsonBtn'),
-      importFile: document.getElementById('importFile')
+      modeBar: document.getElementById('modeBar'),
+      soloView: document.getElementById('soloView'),
+      soloSizeInput: document.getElementById('soloSizeInput'),
+      soloSizePresets: document.getElementById('soloSizePresets'),
+      soloPasteBox: document.getElementById('soloPasteBox'),
+      soloPasteAddBtn: document.getElementById('soloPasteAddBtn'),
+      soloAddInput: document.getElementById('soloAddInput'),
+      soloAddBtn: document.getElementById('soloAddBtn'),
+      soloChips: document.getElementById('soloChips'),
+      soloShuffleBtn: document.getElementById('soloShuffleBtn'),
+      soloClearBtn: document.getElementById('soloClearBtn'),
+      soloStatus: document.getElementById('soloStatus'),
+      soloResults: document.getElementById('soloResults')
     };
   }
 
@@ -231,7 +252,6 @@
     });
     els.teamList.innerHTML = html;
     renderByePreview();
-    renderPresets();
   }
 
   /* ---------------- Bye preview (setup) ---------------- */
@@ -291,7 +311,7 @@
 
   function setTeamCount(n) {
     n = Math.max(MIN_TEAMS, Math.min(MAX_TEAMS, n));
-    const pc = BRACKET_TYPES[state.bracketType].players;
+    const pc = playerCountFor(state.bracketType);
     if (n > state.teams.length) {
       while (state.teams.length < n) state.teams.push({ name: '', players: new Array(pc).fill('') });
     } else if (n < state.teams.length) {
@@ -325,7 +345,7 @@
 
   function resetTeams() {
     if (!confirm('Clear all team names and player rosters?\n\nThis keeps your bracket type, match format, and number of teams.')) return;
-    const pc = BRACKET_TYPES[state.bracketType].players;
+    const pc = playerCountFor(state.bracketType);
     state.teams.forEach(t => { t.name = ''; t.players = new Array(pc).fill(''); });
     invalidateScores();
     saveState();
@@ -355,93 +375,149 @@
     renderSetup();
   }
 
-  /* ---------------- Presets & backup ---------------- */
-  function loadPresets() { try { const r = localStorage.getItem(PRESETS_KEY); return r ? JSON.parse(r) : {}; } catch (e) { return {}; } }
-  function savePresets(o) { try { localStorage.setItem(PRESETS_KEY, JSON.stringify(o)); } catch (e) { /* ignore */ } }
+  /* ---------------- Solo Shuffle Wargames ---------------- */
+  // Split on newlines or commas, trim, drop blanks.
+  function parseNames(raw) {
+    return String(raw || '')
+      .split(/[\n,]+/)
+      .map(s => s.trim())
+      .filter(Boolean);
+  }
 
-  // Normalise + apply a roster config (from a preset or an import) to live state.
-  function applyRoster(cfg) {
-    if (!cfg) return;
-    cfg.bracketType = BRACKET_TYPES[cfg.bracketType] ? cfg.bracketType : '3v3';
-    cfg.matchFormat = [1, 3, 5].includes(cfg.matchFormat) ? cfg.matchFormat : 1;
-    const pc = BRACKET_TYPES[cfg.bracketType].players;
-    let teams = Array.isArray(cfg.teams) ? cfg.teams : [];
-    if (teams.length < MIN_TEAMS) teams = defaultTeams(8, pc);
-    teams = teams.slice(0, MAX_TEAMS).map(t => ({
-      name: (t && t.name) || '',
-      players: Array.from({ length: pc }, (_, i) => ((t && t.players && t.players[i]) || ''))
-    }));
-    state.bracketType = cfg.bracketType;
-    state.matchFormat = cfg.matchFormat;
-    state.teams = teams;
-    state.teamCount = teams.length;
+  // Adds names, skipping case-insensitive duplicates already in the list.
+  function addSoloNames(names) {
+    if (!names || !names.length) return 0;
+    const seen = new Set(state.soloPlayers.map(p => p.toLowerCase()));
+    let added = 0;
+    names.forEach(n => {
+      const key = n.toLowerCase();
+      if (!seen.has(key)) { state.soloPlayers.push(n); seen.add(key); added++; }
+    });
+    if (added > 0) { saveState(); renderSoloChips(); }
+    return added;
+  }
+
+  function removeSoloPlayer(idx) {
+    state.soloPlayers.splice(idx, 1);
+    saveState();
+    renderSoloChips();
+  }
+
+  function clearSoloPlayers() {
+    state.soloPlayers = [];
+    saveState();
+    renderSoloChips();
+    lastSoloTeams = [];
+    lastSoloByes = [];
+    if (els.soloResults) els.soloResults.innerHTML = '';
+  }
+
+  function setSoloTeamSize(n) {
+    n = Math.max(1, Math.min(99, Math.round(n) || 1));
+    state.soloTeamSize = n;
+    saveState();
+    renderSoloChips();
+  }
+
+  function renderSoloChips() {
+    if (!els.soloChips) return;
+    const list = state.soloPlayers;
+    els.soloChips.innerHTML = list.map((name, i) =>
+      `<span class="solo-chip">${escapeHtml(name)}<button type="button" data-action="remove" data-index="${i}" title="Remove ${escapeHtml(name)}">&times;</button></span>`
+    ).join('');
+
+    els.soloSizeInput.value = state.soloTeamSize;
+    els.soloSizePresets.querySelectorAll('.toggle-btn').forEach(b =>
+      b.classList.toggle('active', +b.dataset.size === state.soloTeamSize));
+
+    const n = list.length, size = state.soloTeamSize;
+    els.soloStatus.classList.remove('hidden', 'warn');
+    if (n === 0) {
+      els.soloStatus.textContent = 'Add players above, then shuffle them into teams.';
+    } else {
+      const fullTeams = Math.floor(n / size);
+      const leftover = n % size;
+      let msg = `${n} player${n === 1 ? '' : 's'} \u2192 ${fullTeams} team${fullTeams === 1 ? '' : 's'} of ${size}`;
+      if (leftover > 0) {
+        msg += `, ${leftover} on standby (bye)`;
+        els.soloStatus.classList.add('warn');
+      }
+      els.soloStatus.textContent = msg;
+    }
+  }
+
+  let lastSoloTeams = [];
+  let lastSoloByes = [];
+
+  function shuffleSolo() {
+    const size = state.soloTeamSize;
+    const pool = state.soloPlayers.slice();
+    if (pool.length < size) {
+      alert(`You need at least ${size} player${size === 1 ? '' : 's'} to form one team of ${size}.`);
+      return;
+    }
+    // Fisher-Yates
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    const teams = [];
+    let i = 0;
+    for (; i + size <= pool.length; i += size) teams.push(pool.slice(i, i + size));
+    const byes = pool.slice(i);
+    renderSoloResults(teams, byes);
+  }
+
+  function renderSoloResults(teams, byes) {
+    lastSoloTeams = teams;
+    lastSoloByes = byes;
+
+    let html = '';
+    if (teams.length) {
+      html += `<div class="solo-results-toolbar">
+        <div class="solo-results-count">${teams.length} team${teams.length === 1 ? '' : 's'} of ${state.soloTeamSize}</div>
+        <button type="button" class="primary-btn" data-action="generate-bracket">Generate Bracket &rarr;</button>
+      </div>`;
+    }
+    html += '<div class="solo-team-grid">';
+    teams.forEach((team, i) => {
+      html += `<div class="solo-team-card">
+        <div class="solo-team-head"><span class="seed-badge">${i + 1}</span><span class="solo-team-name">Team ${i + 1}</span></div>
+        <ul>${team.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul>
+      </div>`;
+    });
+    html += '</div>';
+    if (byes.length) {
+      html += `<div class="solo-byes">
+        <div class="solo-byes-title">Byes this round</div>
+        <div class="solo-byes-list">${byes.map(p => `<span>${escapeHtml(p)}</span>`).join('')}</div>
+      </div>`;
+    }
+    els.soloResults.innerHTML = html;
+  }
+
+  // Sends the last shuffled solo teams into the Arena Bracket flow, just
+  // like a normal roster, then jumps straight to the generated bracket.
+  function generateBracketFromSolo() {
+    if (lastSoloTeams.length < MIN_TEAMS) {
+      alert('You need at least 2 full teams to generate a bracket. Add more players or lower the team size.');
+      return;
+    }
+    if (lastSoloByes.length > 0) {
+      const ok = confirm(`${lastSoloByes.length} player${lastSoloByes.length === 1 ? "" : "s"} didn't fill a full team and will sit this bracket out. Continue?`);
+      if (!ok) return;
+    }
+    const size = state.soloTeamSize;
+    state.bracketType = size + 'v' + size;
+    state.matchFormat = [1, 3, 5].includes(state.matchFormat) ? state.matchFormat : 1;
+    state.teams = lastSoloTeams.map((players, i) => ({ name: 'Team ' + (i + 1), players: players.slice() }));
+    state.teamCount = state.teams.length;
     invalidateScores();
     saveState();
     renderSetup();
-  }
-
-  function renderPresets() {
-    const sel = els.presetSelect; if (!sel) return;
-    const names = Object.keys(loadPresets()).sort((a, b) => a.localeCompare(b));
-    const prev = sel.value;
-    if (names.length === 0) { sel.innerHTML = '<option value="">No saved presets</option>'; sel.disabled = true; return; }
-    sel.disabled = false;
-    sel.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
-    if (prev && names.includes(prev)) sel.value = prev;
-  }
-
-  function savePreset() {
-    const name = els.presetName.value.trim();
-    if (!name) { alert('Give the preset a name first.'); els.presetName.focus(); return; }
-    const presets = loadPresets();
-    presets[name] = { bracketType: state.bracketType, matchFormat: state.matchFormat, teams: JSON.parse(JSON.stringify(state.teams)) };
-    savePresets(presets);
-    els.presetName.value = '';
-    renderPresets();
-    flashBtn(els.savePresetBtn, 'Saved!');
-  }
-
-  function loadPreset() {
-    const name = els.presetSelect.value; if (!name) { alert('Choose a preset to load.'); return; }
-    const cfg = loadPresets()[name];
-    if (!cfg) { renderPresets(); return; }
-    applyRoster(cfg);
-  }
-
-  function deletePreset() {
-    const name = els.presetSelect.value; if (!name) { alert('Choose a preset to delete.'); return; }
-    if (!confirm('Delete preset \u201c' + name + '\u201d?')) return;
-    const presets = loadPresets(); delete presets[name]; savePresets(presets); renderPresets();
-  }
-
-  function exportJSON() {
-    const data = { app: 'mdga-tournament', version: 1, exportedAt: new Date().toISOString(), state: {
-      guildName: state.guildName, abbr: state.abbr, bracketType: state.bracketType,
-      matchFormat: state.matchFormat, teams: state.teams, scores: state.scores
-    } };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = (state.abbr || 'mdga') + '-tournament.json';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-
-  function importJSON(file) {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result);
-        const s = (data && data.state) || data;
-        if (!s || !Array.isArray(s.teams)) { alert('That file does not look like a tournament export.'); return; }
-        if (Object.keys(state.scores).length && !confirm('Importing will replace the current teams and scores. Continue?')) return;
-        applyRoster(s);
-        if (s.scores && typeof s.scores === 'object') { state.scores = s.scores; saveState(); }
-        if (s.guildName) { state.guildName = s.guildName; const h = document.getElementById('guildName'); if (h) h.textContent = s.guildName; saveState(); }
-      } catch (e) { alert('Could not read that file: ' + e.message); }
-    };
-    reader.readAsText(file);
+    setMode('bracket');
+    showView('bracket');
+    renderBracket();
   }
 
   /* ---------------- Bracket view ---------------- */
@@ -668,14 +744,34 @@
     }
   }
 
-  /* ---------------- View switching ---------------- */
-  function showView(name) {
-    const setup = name === 'setup';
-    els.setupView.classList.toggle('hidden', !setup);
-    els.bracketView.classList.toggle('hidden', setup);
-    state.view = name;
+  /* ---------------- Mode + view switching ---------------- */
+  // Shows/hides the three top-level sections (setupView, bracketView, soloView)
+  // based on the current mode ('bracket' | 'solo') and, within bracket mode,
+  // the current view ('setup' | 'bracket').
+  function applyModeVisibility() {
+    const isSolo = state.mode === 'solo';
+    els.modeBar.querySelectorAll('.mode-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.mode === state.mode));
+    els.soloView.classList.toggle('hidden', !isSolo);
+    els.setupView.classList.toggle('hidden', isSolo || state.view !== 'setup');
+    els.bracketView.classList.toggle('hidden', isSolo || state.view !== 'bracket');
+    if (isSolo) els.subtitle.textContent = 'Solo Shuffle Wargames';
+    else if (state.view === 'setup') els.subtitle.textContent = 'Arena Tournament Bracket Generator';
+  }
+
+  function setMode(mode) {
+    if (mode !== 'bracket' && mode !== 'solo') return;
+    state.mode = mode;
     saveState();
-    if (setup) els.subtitle.textContent = 'Arena Tournament Bracket Generator';
+    applyModeVisibility();
+    if (mode === 'solo') renderSoloChips();
+    window.scrollTo(0, 0);
+  }
+
+  function showView(name) {
+    state.view = (name === 'bracket') ? 'bracket' : 'setup';
+    saveState();
+    applyModeVisibility();
     window.scrollTo(0, 0);
   }
 
@@ -741,7 +837,10 @@
 
     els.newTournamentBtn.addEventListener('click', () => {
       if (!confirm('Start a new tournament? This clears all teams and scores.')) return;
+      const keepSoloPlayers = state.soloPlayers, keepSoloSize = state.soloTeamSize;
       state = freshState();
+      state.soloPlayers = keepSoloPlayers;
+      state.soloTeamSize = keepSoloSize;
       saveState();
       renderSetup();
       showView('setup');
@@ -752,15 +851,54 @@
     // Copy results to clipboard
     els.copyResultsBtn.addEventListener('click', copyResults);
 
-    // Presets & backup
-    els.savePresetBtn.addEventListener('click', savePreset);
-    els.loadPresetBtn.addEventListener('click', loadPreset);
-    els.deletePresetBtn.addEventListener('click', deletePreset);
-    els.exportJsonBtn.addEventListener('click', exportJSON);
-    els.importJsonBtn.addEventListener('click', () => els.importFile.click());
-    els.importFile.addEventListener('change', e => {
-      importJSON(e.target.files && e.target.files[0]);
-      e.target.value = '';   // allow re-importing the same file
+    // Mode bar (Arena Bracket <-> Solo Shuffle)
+    els.modeBar.addEventListener('click', e => {
+      const btn = e.target.closest('.mode-btn'); if (!btn) return;
+      setMode(btn.dataset.mode);
+    });
+
+    // Solo Shuffle: team size
+    els.soloSizeInput.addEventListener('change', () => setSoloTeamSize(+els.soloSizeInput.value));
+    els.soloSizePresets.addEventListener('click', e => {
+      const btn = e.target.closest('.toggle-btn'); if (!btn) return;
+      setSoloTeamSize(+btn.dataset.size);
+    });
+
+    // Solo Shuffle: adding players
+    els.soloPasteAddBtn.addEventListener('click', () => {
+      addSoloNames(parseNames(els.soloPasteBox.value));
+      els.soloPasteBox.value = '';
+    });
+    function addSingleSoloPlayer() {
+      const v = els.soloAddInput.value.trim();
+      if (!v) return;
+      addSoloNames([v]);
+      els.soloAddInput.value = '';
+      els.soloAddInput.focus();
+    }
+    els.soloAddBtn.addEventListener('click', addSingleSoloPlayer);
+    els.soloAddInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); addSingleSoloPlayer(); }
+    });
+
+    // Solo Shuffle: remove a player chip
+    els.soloChips.addEventListener('click', e => {
+      const btn = e.target.closest('[data-action="remove"]'); if (!btn) return;
+      removeSoloPlayer(+btn.dataset.index);
+    });
+
+    // Solo Shuffle: shuffle / clear
+    els.soloShuffleBtn.addEventListener('click', shuffleSolo);
+    els.soloClearBtn.addEventListener('click', () => {
+      if (!state.soloPlayers.length) return;
+      if (!confirm('Clear all players from the solo shuffle list?')) return;
+      clearSoloPlayers();
+    });
+
+    // Solo Shuffle: generate a bracket from the last shuffle result
+    els.soloResults.addEventListener('click', e => {
+      const btn = e.target.closest('[data-action="generate-bracket"]'); if (!btn) return;
+      generateBracketFromSolo();
     });
 
     // Bracket: score entry
@@ -816,13 +954,11 @@
     state = loadState();
     bindEvents();
     renderSetup();
+    renderSoloChips();
     // Restore the last view, but only land on the bracket if it's actually valid.
-    if (state.view === 'bracket' && state.teams.length >= MIN_TEAMS) {
-      showView('bracket');
-      renderBracket();
-    } else {
-      showView('setup');
-    }
+    if (state.view === 'bracket' && state.teams.length < MIN_TEAMS) state.view = 'setup';
+    applyModeVisibility();
+    if (state.mode === 'bracket' && state.view === 'bracket') renderBracket();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
